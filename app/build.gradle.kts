@@ -6,6 +6,15 @@ android {
     namespace = "com.example.demo"
     compileSdk = 37
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/release.keystore")
+            storePassword = "android"
+            keyAlias = "comfyui_mobile"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.demo"
         minSdk = 24
@@ -19,6 +28,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
