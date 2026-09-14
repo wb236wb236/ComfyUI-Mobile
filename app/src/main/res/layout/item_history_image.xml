@@ -24,7 +24,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             android:background="@drawable/comfy_rounded_image_bg"
             android:clipToOutline="true"
-            app:layout_constraintDimensionRatio="1:1" />
-
+            app:layout_constraintDimensionRatio="1:1"
+            android:contentDescription="图片" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.cardview.widget.CardView>

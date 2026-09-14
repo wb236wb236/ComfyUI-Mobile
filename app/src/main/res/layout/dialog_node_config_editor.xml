@@ -143,23 +143,57 @@
         android:inputType="textMultiLine"
         android:visibility="gone" />
 
-    <!-- 预览区域 -->
+    <!-- 可视化编辑按钮 -->
     <TextView
-        android:id="@+id/tvPreview"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:text="检测到的参数："
-        android:textColor="@color/white"
+        android:id="@+id/btnVisualEditor"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="16dp"
+        android:text="可视化编辑工作流"
+        android:textColor="#DFFF00"
         android:textSize="14sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
+        android:gravity="center"
+        android:background="@drawable/comfy_action_btn_bg"
+        android:clickable="true"
+        android:focusable="true" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvPreviewParams"
+    <!-- 占位符替换开关 -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:visibility="gone" />
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/comfy_edit_bg"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="占位符替换模式"
+                android:textColor="@color/white"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="启用后生成时优先使用占位符替换，与内置提示词注入二选一"
+                android:textColor="#777777"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swPlaceholderMode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false" />
+    </LinearLayout>
 
 </LinearLayout>

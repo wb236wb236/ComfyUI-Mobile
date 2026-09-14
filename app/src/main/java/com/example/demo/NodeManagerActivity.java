@@ -1,20 +1,29 @@
 package com.example.demo;
 
 import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -22,6 +31,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.demo.manager.NodeConfigManager;
 import com.example.demo.model.NodeConfig;
+import com.example.demo.placeholder.PlaceholderReplacer;
 import com.example.demo.view.AppHeader;
 
 import java.io.InputStream;
@@ -36,6 +46,9 @@ import java.util.Locale;
  */
 public class NodeManagerActivity extends AppCompatActivity {
 
+    private static final String PREFS_NAME = "comfy_node_prefs";
+    private static final String KEY_PLACEHOLDER_MODE = "placeholder_mode_prefix_";
+
     private RecyclerView rvNodeConfigs;
     private LinearLayout nodeManagerRoot;
     private AppHeader appHeader;
@@ -47,6 +60,20 @@ public class NodeManagerActivity extends AppCompatActivity {
     private static final int REQUEST_IMPORT_FILE = 1001;
     private boolean isPasteMode = false;
     private String selectedFilePath = "";
+
+    private EditText currentEtJsonContent;
+    private String currentEditingConfigId;
+
+    private final ActivityResultLauncher<Intent> visualEditorLauncher =
+        registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                String editedJson = result.getData().getStringExtra(WorkflowVisualEditorActivity.EXTRA_RESULT_JSON);
+                if (editedJson != null && currentEtJsonContent != null) {
+                    currentEtJsonContent.setText(editedJson);
+                    Toast.makeText(this, "工作流已更新，请点击保存", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -157,7 +184,7 @@ public class NodeManagerActivity extends AppCompatActivity {
     private void showAddDialog() {
         isPasteMode = false;
         selectedFilePath = "";
-        
+
         View dialogView = View.inflate(this, R.layout.dialog_node_config_editor, null);
         EditText etName = dialogView.findViewById(R.id.etName);
         EditText etDescription = dialogView.findViewById(R.id.etDescription);
@@ -166,6 +193,13 @@ public class NodeManagerActivity extends AppCompatActivity {
         TextView btnSelectFile = dialogView.findViewById(R.id.btnSelectFile);
         TextView tvSelectedFile = dialogView.findViewById(R.id.tvSelectedFile);
         EditText etJsonContent = dialogView.findViewById(R.id.etJsonContent);
+        TextView btnVisualEditor = dialogView.findViewById(R.id.btnVisualEditor);
+        SwitchCompat swPlaceholderMode = dialogView.findViewById(R.id.swPlaceholderMode);
+
+        currentEtJsonContent = etJsonContent;
+        currentEditingConfigId = null;
+
+        swPlaceholderMode.setChecked(false);
 
         // 默认显示文件选择
         updateUploadModeUI(rbFromFile, rbFromPaste, btnSelectFile, etJsonContent);
@@ -184,6 +218,17 @@ public class NodeManagerActivity extends AppCompatActivity {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("application/json");
             startActivityForResult(intent, REQUEST_IMPORT_FILE);
+        });
+
+        btnVisualEditor.setOnClickListener(v -> {
+            String jsonContent = getDialogContent(isPasteMode, etJsonContent);
+            if (jsonContent == null || jsonContent.isEmpty()) {
+                Toast.makeText(this, "请先输入或粘贴工作流 JSON", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Intent intent = new Intent(this, WorkflowVisualEditorActivity.class);
+            intent.putExtra(WorkflowVisualEditorActivity.EXTRA_WORKFLOW_JSON, jsonContent);
+            visualEditorLauncher.launch(intent);
         });
 
         AlertDialog dialog = new AlertDialog.Builder(this)
@@ -229,16 +274,17 @@ public class NodeManagerActivity extends AppCompatActivity {
                 jsonContent = selectedFilePath;
             }
 
-            NodeConfig config = configManager.createConfig(name, 
+            NodeConfig config = configManager.createConfig(name,
                 etDescription.getText().toString().trim(), jsonContent);
             if (config != null) {
+                setPlaceholderMode(config.getId(), swPlaceholderMode.isChecked());
                 loadConfigs();
                 Toast.makeText(this, "配置创建成功", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "配置创建失败，请检查 JSON 格式", Toast.LENGTH_SHORT).show();
             }
         });
-        
+
         dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "取消", (d, which) -> d.dismiss());
 
         dialog.show();
@@ -269,43 +315,46 @@ public class NodeManagerActivity extends AppCompatActivity {
      * 显示配置操作选项对话框
      */
     private void showConfigOptionsDialog(NodeConfig config) {
-        String[] options;
+        final String[] options;
         if (config.getType() == NodeConfig.ConfigType.BUILTIN) {
             options = new String[]{"设为激活", "查看详情"};
         } else {
             options = new String[]{"设为激活", "编辑", "删除", "查看详情"};
         }
+        final int detailIndex = options.length - 1; // "查看详情" 始终是最后一个
+        final boolean isCustom = config.getType() != NodeConfig.ConfigType.BUILTIN;
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.Theme_Demo_ConfigDialog)
                 .setTitle(config.getName())
-                .setItems(options, (d, which) -> {
-                    switch (which) {
-                        case 0: // 设为激活
+                .setAdapter(new ArrayAdapter<String>(this, R.layout.item_dialog_option, R.id.list_item_1, options) {
+                    @Override
+                    public View getView(int position, View convertView, ViewGroup parent) {
+                        View view = convertView != null ? convertView :
+                                LayoutInflater.from(getContext()).inflate(R.layout.item_dialog_option, parent, false);
+                        TextView tv = view.findViewById(R.id.list_item_1);
+                        tv.setText(getItem(position));
+                        tv.setTextColor(Color.parseColor("#e0e0e0")); // 全部白色
+                        return view;
+                    }
+                }, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        if (which == 0) {
                             configManager.setActiveConfig(config.getId());
                             loadConfigs();
-                            Toast.makeText(this, "已切换至：" + config.getName(), Toast.LENGTH_SHORT).show();
-                            break;
-                        case 1: // 编辑（或查看详情）
-                            if (config.getType() == NodeConfig.ConfigType.BUILTIN) {
-                                showConfigDetailDialog(config);
-                            } else {
-                                showEditDialog(config);
-                            }
-                            break;
-                        case 2: // 删除
-                            if (config.getType() != NodeConfig.ConfigType.BUILTIN) {
-                                showDeleteConfirmDialog(config);
-                            }
-                            break;
-                        case 3: // 查看详情
+                            Toast.makeText(NodeManagerActivity.this, "已切换至：" + config.getName(), Toast.LENGTH_SHORT).show();
+                        } else if (which == detailIndex) {
                             showConfigDetailDialog(config);
-                            break;
+                        } else if (isCustom && which == 1) {
+                            showEditDialog(config);
+                        } else if (isCustom && which == 2) {
+                            showDeleteConfirmDialog(config);
+                        }
                     }
                 })
                 .create();
 
         if (dialog.getWindow() != null) {
-            // 使用自定义的圆角背景
             dialog.getWindow().setBackgroundDrawableResource(R.drawable.comfy_dialog_bg);
         }
 
@@ -323,19 +372,27 @@ public class NodeManagerActivity extends AppCompatActivity {
         TextView rbFromFile = dialogView.findViewById(R.id.rbFromFile);
         TextView rbFromPaste = dialogView.findViewById(R.id.rbFromPaste);
         TextView btnSelectFile = dialogView.findViewById(R.id.btnSelectFile);
+        TextView btnVisualEditor = dialogView.findViewById(R.id.btnVisualEditor);
+        SwitchCompat swPlaceholderMode = dialogView.findViewById(R.id.swPlaceholderMode);
+
+        currentEtJsonContent = etJsonContent;
+        currentEditingConfigId = config.getId();
 
         // 预填数据
         etName.setText(config.getName());
         etDescription.setText(config.getDescription() != null ? config.getDescription() : "");
-        
+
         // 默认使用粘贴模式显示 JSON
         isPasteMode = true;
         updateUploadModeUI(rbFromPaste, rbFromFile, btnSelectFile, etJsonContent);
-        
+
         String currentContent = configManager.getConfigJsonContent(config.getId());
         if (currentContent != null) {
             etJsonContent.setText(currentContent);
         }
+
+        // 读取占位符开关状态
+        swPlaceholderMode.setChecked(getPlaceholderMode(config.getId()));
 
         rbFromFile.setOnClickListener(v -> {
             isPasteMode = false;
@@ -353,6 +410,17 @@ public class NodeManagerActivity extends AppCompatActivity {
             startActivityForResult(intent, REQUEST_IMPORT_FILE);
         });
 
+        btnVisualEditor.setOnClickListener(v -> {
+            String jsonContent = getDialogContent(isPasteMode, etJsonContent);
+            if (jsonContent == null || jsonContent.isEmpty()) {
+                Toast.makeText(this, "请先输入或粘贴工作流 JSON", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Intent intent = new Intent(this, WorkflowVisualEditorActivity.class);
+            intent.putExtra(WorkflowVisualEditorActivity.EXTRA_WORKFLOW_JSON, jsonContent);
+            visualEditorLauncher.launch(intent);
+        });
+
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(dialogView)
                 .create();
@@ -361,13 +429,10 @@ public class NodeManagerActivity extends AppCompatActivity {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         }
 
-        // 处理自定义对话框的按钮逻辑
-        // 由于布局中没有定义保存/取消按钮，我们保持使用 AlertDialog 的默认按钮
-        // 但为了符合透明背景风格，我们需要在 show() 之后获取按钮并设置样式
         dialog.setOnShowListener(d -> {
             Button posBtn = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             Button negBtn = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            
+
             if (posBtn != null) {
                 posBtn.setTextColor(Color.parseColor("#DFFF00"));
                 posBtn.setAllCaps(false);
@@ -378,7 +443,6 @@ public class NodeManagerActivity extends AppCompatActivity {
             }
         });
 
-        // 原有的 positive 按钮逻辑
         dialog.setButton(AlertDialog.BUTTON_POSITIVE, "保存", (d, which) -> {
             String name = etName.getText().toString().trim();
             if (name.isEmpty()) {
@@ -404,13 +468,14 @@ public class NodeManagerActivity extends AppCompatActivity {
             boolean success = configManager.updateConfig(config.getId(), name,
                 etDescription.getText().toString().trim(), jsonContent);
             if (success) {
+                setPlaceholderMode(config.getId(), swPlaceholderMode.isChecked());
                 loadConfigs();
                 Toast.makeText(this, "配置已保存", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "保存失败，请检查 JSON 格式", Toast.LENGTH_SHORT).show();
             }
         });
-        
+
         dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "取消", (d, which) -> d.dismiss());
 
         dialog.show();
@@ -530,12 +595,48 @@ public class NodeManagerActivity extends AppCompatActivity {
                     is.read(buffer);
                     is.close();
                     selectedFilePath = new String(buffer, "UTF-8");
-                    
+
                     Toast.makeText(this, "文件已选择", Toast.LENGTH_SHORT).show();
                 } catch (Exception e) {
                     Toast.makeText(this, "读取文件失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             }
         }
+    }
+
+    /**
+     * 获取对话框中的 JSON 内容
+     */
+    private String getDialogContent(boolean pasteMode, EditText etJsonContent) {
+        if (pasteMode) {
+            return etJsonContent.getText().toString().trim();
+        } else {
+            return selectedFilePath;
+        }
+    }
+
+    /**
+     * 保存占位符模式开关状态
+     */
+    private void setPlaceholderMode(String configId, boolean enabled) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        prefs.edit().putBoolean(KEY_PLACEHOLDER_MODE + configId, enabled).apply();
+    }
+
+    /**
+     * 读取占位符模式开关状态
+     */
+    private boolean getPlaceholderMode(String configId) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        return prefs.getBoolean(KEY_PLACEHOLDER_MODE + configId, false);
+    }
+
+    /**
+     * 静态方法：读取指定配置的占位符模式
+     */
+    public static boolean isPlaceholderMode(android.content.Context context, String configId) {
+        if (configId == null) return false;
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        return prefs.getBoolean(KEY_PLACEHOLDER_MODE + configId, false);
     }
 }

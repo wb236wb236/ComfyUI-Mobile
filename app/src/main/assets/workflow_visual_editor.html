@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { width:100%; height:100%; overflow:hidden; background:#1a1a2e; color:#e0e0e0; font-family:system-ui,-apple-system,sans-serif; font-size:14px; }
+
+#header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:#16162a; border-bottom:1px solid #2a2a4e; height:48px; flex-shrink:0; }
+#header h3 { font-size:16px; color:#DFFF00; }
+#btnClose { font-size:24px; color:#888; cursor:pointer; padding:4px 12px; background:none; border:none; }
+
+#toolbar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#1e1e38; border-bottom:1px solid #2a2a4e; flex-shrink:0; }
+#toolbar button { background:#2a2a4e; color:#ccc; border:1px solid #3a3a5e; border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; }
+#toolbar button:active { background:#3a3a5e; }
+#toolbar .stats { margin-left:auto; font-size:12px; color:#666; }
+
+#body { display:flex; flex-direction:column; flex:1; overflow:hidden; height:100%; }
+#canvasWrapper { flex:1; overflow:auto; position:relative; background:#12122a; }
+#svgWrapper { position:relative; transform-origin:top left; }
+#svgWrapper svg { display:block; }
+
+#propertiesPanel { width:100%; background:#1e1e38; border-top:2px solid #2a2a4e; flex-shrink:0; position:relative; transition:height 0.2s; display:flex; flex-direction:column; overflow:hidden; }
+#propertiesPanel .placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; color:#555; }
+#propertiesPanel .placeholder p { margin-top:8px; font-size:13px; }
+#propertiesPanel .properties-content { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+
+#propertiesPanel .drag-handle { position:absolute; top:0; left:50%; transform:translateX(-50%); width:40px; height:4px; background:#4a90e2; border-radius:2px; cursor:row-resize; z-index:20; box-shadow:0 1px 3px rgba(0,0,0,0.4); }
+#propertiesPanel .drag-handle::before { content:''; position:absolute; top:6px; left:50%; transform:translateX(-50%); width:60px; height:30px; }
+
+.node-property-group { padding:12px 16px; border-bottom:1px solid #2a2a4e; }
+.node-property-group label { display:block; font-size:12px; color:#999; margin-bottom:4px; }
+.node-property-group .input-row { display:flex; align-items:center; gap:6px; }
+.node-property-group input, .node-property-group textarea, .node-property-group select { flex:1; background:#12122a; color:#e0e0e0; border:1px solid #2a2a4e; border-radius:4px; padding:6px 8px; font-size:13px; }
+.node-property-group textarea { min-height:60px; resize:vertical; }
+.placeholder-btn { background:#2a2a4e; color:#888; border:1px solid #3a3a5e; border-radius:4px; padding:4px 6px; font-size:11px; cursor:pointer; white-space:nowrap; }
+.placeholder-btn:active { background:#3a3a5e; }
+.connection-display { font-size:12px; color:#666; padding:4px 0; }
+.connection-badge { display:inline-block; background:#2a2a4e; color:#888; font-size:10px; padding:1px 6px; border-radius:3px; margin-left:6px; }
+
+.properties-header { padding:12px 16px; border-bottom:1px solid #2a2a4e; }
+.properties-header h4 { font-size:14px; color:#DFFF00; margin-bottom:4px; }
+.properties-header .node-id { font-size:11px; color:#666; }
+
+.skip-section { padding:8px 16px; border-bottom:1px solid #2a2a4e; }
+.skip-label { display:flex; align-items:center; gap:6px; font-size:12px; color:#999; }
+.skip-status { font-size:11px; color:#666; margin-top:4px; }
+.skip-status.skipped { color:#f5a623; }
+.skip-status.not-skippable { color:#e74c3c; }
+.skip-status.can-skip { color:#2ecc71; }
+
+.placeholder-menu { position:fixed; bottom:0; left:0; right:0; background:#1e1e38; border-top:1px solid #3a3a5e; border-radius:16px 16px 0 0; box-shadow:0 -4px 24px rgba(0,0,0,0.5); max-height:70vh; overflow:hidden; z-index:1000; display:none; flex-direction:column; }
+.placeholder-menu.dragging { max-height:100vh; }
+.placeholder-menu-header { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid #2a2a4e; cursor:grab; user-select:none; flex-shrink:0; }
+.placeholder-menu-header:active { cursor:grabbing; }
+.placeholder-menu-header .drag-handle { width:40px; height:4px; background:#444; border-radius:2px; }
+.placeholder-menu-header .close-btn { background:#3a3a5e; border:none; color:#ccc; border-radius:4px; padding:4px 10px; font-size:12px; cursor:pointer; }
+.placeholder-menu-items { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.placeholder-menu-item { padding:8px 12px; cursor:pointer; border-bottom:1px solid #2a2a4e; display:flex; justify-content:space-between; align-items:center; }
+.placeholder-menu-item:active { background:#2a2a4e; }
+.placeholder-menu-item.recommended .placeholder-code { color:#DFFF00; }
+.placeholder-menu-item .placeholder-code { font-size:12px; color:#aaa; }
+.placeholder-menu-item .placeholder-label { font-size:11px; color:#666; }
+.placeholder-menu-item.clear { border-top:2px solid #2a2a4e; }
+.placeholder-menu-item.clear .placeholder-code { color:#e74c3c; }
+
+.node-rect { cursor:pointer; }
+.node-rect.selected rect { stroke-width:3; }
+.node-rect.skipped rect { stroke-dasharray:5,5; opacity:0.5; }
+.connection-path { pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h3>工作流可视化</h3>
+  <button id="btnClose" onclick="closeEditor()">&times;</button>
+</div>
+
+<div id="toolbar">
+  <button onclick="zoom(0.2)">+</button>
+  <button onclick="zoom(-0.2)">-</button>
+  <button onclick="zoomReset()">重置</button>
+  <button onclick="saveWorkflow()" style="color:#DFFF00;border-color:#DFFF00;">保存修改</button>
+  <span class="stats" id="stats"></span>
+</div>
+
+<div id="body">
+  <div id="canvasWrapper">
+    <div id="svgWrapper">
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+  </div>
+  <div id="propertiesPanel" style="height:200px;">
+    <div class="drag-handle" id="propertiesDragHandle"></div>
+    <div class="placeholder" id="propertiesPlaceholder">
+      <p style="font-size:32px;opacity:0.3;">&#x1F446;</p>
+      <p>点击节点查看属性</p>
+    </div>
+    <div class="properties-content" id="propertiesContent"></div>
+  </div>
+</div>
+
+<script>
+var PLACEHOLDER_MAP = [{"placeholder":"%seed%","label":"种子 (seed)","type":"number","matchKeys":["seed"]},{"placeholder":"%steps%","label":"步数 (steps)","type":"number","matchKeys":["steps"]},{"placeholder":"%cfg_scale%","label":"CFG (cfg)","type":"number","matchKeys":["cfg","cfg_scale"]},{"placeholder":"%sampler_name%","label":"采样器 (sampler)","type":"string","matchKeys":["sampler_name","sampler"]},{"placeholder":"%scheduler%","label":"调度器 (scheduler)","type":"string","matchKeys":["scheduler"]},{"placeholder":"%width%","label":"宽度 (width)","type":"number","matchKeys":["width"]},{"placeholder":"%height%","label":"高度 (height)","type":"number","matchKeys":["height"]},{"placeholder":"%prompt%","label":"正面提示词 (prompt)","type":"string","matchKeys":["positive","text"]},{"placeholder":"%negative_prompt%","label":"负面提示词 (negative)","type":"string","matchKeys":["negative"]},{"placeholder":"%MODEL_NAME%","label":"模型 (ckpt_name)","type":"string","matchKeys":["ckpt_name"]},{"placeholder":"%vae%","label":"VAE","type":"string","matchKeys":["vae_name","vae"]},{"placeholder":"%clip%","label":"CLIP","type":"string","matchKeys":["clip_name"]},{"placeholder":"%c_quanzhong%","label":"IPA权重","type":"number","matchKeys":["c_quanzhong"]},{"placeholder":"%c_idquanzhong%","label":"FaceID权重","type":"number","matchKeys":["c_idquanzhong"]},{"placeholder":"%c_xijie%","label":"细节强度","type":"number","matchKeys":["c_xijie"]},{"placeholder":"%c_fenwei%","label":"氛围强度","type":"number","matchKeys":["c_fenwei"]},{"placeholder":"%comfyuicankaotupian%","label":"参考图","type":"string","matchKeys":["comfyuicankaotupian","image"]},{"placeholder":"%ipa%","label":"IPA类型","type":"string","matchKeys":["ipa"]},{"placeholder":"%inpaint_image%","label":"重绘原图","type":"string","matchKeys":["inpaint_image"]},{"placeholder":"%inpaint_mask%","label":"重绘遮罩","type":"string","matchKeys":["inpaint_mask"]},{"placeholder":"%inpaint_denoise%","label":"重绘强度","type":"number","matchKeys":["inpaint_denoise","denoise"]},{"placeholder":"%inpaint_positive%","label":"重绘正面提示词","type":"string","matchKeys":["inpaint_positive"]},{"placeholder":"%inpaint_negative%","label":"重绘负面提示词","type":"string","matchKeys":["inpaint_negative"]}];
+var workflow = {};
+var nodes = [];
+var nodeMap = {};
+var connections = [];
+var positions = {};
+var selectedNodeId = null;
+var scale = 1;
+var hasModifications = false;
+
+function closeEditor() {
+  AndroidInterface.onClose();
+}
+
+function loadWorkflow(jsonStr) {
+  try {
+    workflow = JSON.parse(jsonStr);
+  } catch(e) {
+    alert("JSON 格式不正确: " + e.message);
+    return;
+  }
+  buildGraph();
+  renderGraph();
+  document.getElementById('stats').textContent = "节点: " + nodes.length + " | 连接: " + connections.length;
+}
+
+function buildGraph() {
+  nodes = [];
+  nodeMap = {};
+  connections = [];
+
+  for (var nodeId in workflow) {
+    if (!workflow.hasOwnProperty(nodeId)) continue;
+    var nodeData = workflow[nodeId];
+    var node = {
+      id: nodeId,
+      classType: nodeData.class_type || "未知",
+      inputs: nodeData.inputs || {},
+      meta: nodeData._meta || {}
+    };
+    nodes.push(node);
+    nodeMap[nodeId] = node;
+  }
+
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    for (var inputKey in node.inputs) {
+      if (!node.inputs.hasOwnProperty(inputKey)) continue;
+      var inputValue = node.inputs[inputKey];
+      if (Array.isArray(inputValue) && inputValue.length === 2 && typeof inputValue[0] === "string") {
+        connections.push({
+          from: inputValue[0],
+          fromOutput: inputValue[1],
+          to: node.id,
+          toInput: inputKey
+        });
+      }
+    }
+  }
+}
+
+function renderGraph() {
+  var nodeWidth = 180, nodeHeight = 60;
+  var hGap = 80, vGap = 30;
+
+  var inDegree = {};
+  var levels = {};
+  nodes.forEach(function(n) { inDegree[n.id] = 0; });
+  connections.forEach(function(c) {
+    if (inDegree[c.to] !== undefined) inDegree[c.to]++;
+  });
+
+  var queue = nodes.filter(function(n) { return inDegree[n.id] === 0; }).map(function(n) { return n.id; });
+  var level = 0;
+  var processed = {};
+  while (queue.length > 0) {
+    var nextQueue = [];
+    for (var i = 0; i < queue.length; i++) {
+      var nodeId = queue[i];
+      if (processed[nodeId]) continue;
+      processed[nodeId] = true;
+      levels[nodeId] = level;
+      connections.filter(function(c) { return c.from === nodeId; }).forEach(function(c) {
+        if (!processed[c.to]) nextQueue.push(c.to);
+      });
+    }
+    queue = nextQueue;
+    level++;
+  }
+  nodes.forEach(function(n) {
+    if (levels[n.id] === undefined) levels[n.id] = level;
+  });
+
+  var levelGroups = {};
+  nodes.forEach(function(n) {
+    var l = levels[n.id];
+    if (!levelGroups[l]) levelGroups[l] = [];
+    levelGroups[l].push(n);
+  });
+
+  positions = {};
+  var maxX = 0, maxY = 0;
+  Object.keys(levelGroups).sort(function(a,b) { return parseInt(a) - parseInt(b); }).forEach(function(l) {
+    var levelNodes = levelGroups[l];
+    var x = parseInt(l) * (nodeWidth + hGap) + 50;
+    levelNodes.forEach(function(n, i) {
+      var y = i * (nodeHeight + vGap) + 50;
+      positions[n.id] = { x: x, y: y };
+      maxX = Math.max(maxX, x + nodeWidth);
+      maxY = Math.max(maxY, y + nodeHeight);
+    });
+  });
+
+  var svg = document.getElementById('svg');
+  svg.innerHTML = '';
+  var svgWidth = maxX + 100;
+  var svgHeight = maxY + 100;
+  svg.setAttribute('width', svgWidth);
+  svg.setAttribute('height', svgHeight);
+  svg.setAttribute('viewBox', '0 0 ' + svgWidth + ' ' + svgHeight);
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var defs = document.createElementNS(SVGNS, 'defs');
+  defs.innerHTML = '<marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#888"/></marker>';
+  svg.appendChild(defs);
+
+  var classColors = {};
+  var palette = ["#4a90e2","#50c878","#f5a623","#d0021b","#9b59b6","#3498db","#e74c3c","#2ecc71","#f39c12","#1abc9c"];
+  var colorIdx = 0;
+  function getClassColor(ct) {
+    if (!classColors[ct]) { classColors[ct] = palette[colorIdx % palette.length]; colorIdx++; }
+    return classColors[ct];
+  }
+
+  connections.forEach(function(conn) {
+    var fromPos = positions[conn.from];
+    var toPos = positions[conn.to];
+    if (!fromPos || !toPos) return;
+    var path = document.createElementNS(SVGNS, 'path');
+    var sx = fromPos.x + nodeWidth;
+    var sy = fromPos.y + nodeHeight / 2;
+    var ex = toPos.x;
+    var ey = toPos.y + nodeHeight / 2;
+    var ctrl = Math.abs(ex - sx) / 2;
+    path.setAttribute('d', 'M ' + sx + ' ' + sy + ' C ' + (sx+ctrl) + ' ' + sy + ', ' + (ex-ctrl) + ' ' + ey + ', ' + ex + ' ' + ey);
+    path.setAttribute('stroke', '#666');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+    path.classList.add('connection-path');
+    svg.appendChild(path);
+  });
+
+  nodes.forEach(function(node) {
+    var pos = positions[node.id];
+    if (!pos) return;
+    var g = document.createElementNS(SVGNS, 'g');
+    g.classList.add('node-rect');
+    g.setAttribute('transform', 'translate(' + pos.x + ', ' + pos.y + ')');
+
+    var isSkipped = workflow[node.id]._skip === true;
+    if (isSkipped) g.classList.add('skipped');
+
+    var color = getClassColor(node.classType);
+    var rect = document.createElementNS(SVGNS, 'rect');
+    rect.setAttribute('width', nodeWidth);
+    rect.setAttribute('height', nodeHeight);
+    rect.setAttribute('rx', '8');
+    rect.setAttribute('fill', isSkipped ? '#1a1a2e' : '#2a2a3e');
+    rect.setAttribute('stroke', color);
+    rect.setAttribute('stroke-width', '2');
+    g.appendChild(rect);
+
+    var idText = document.createElementNS(SVGNS, 'text');
+    idText.setAttribute('x', '10');
+    idText.setAttribute('y', '18');
+    idText.setAttribute('fill', '#aaa');
+    idText.setAttribute('font-size', '11');
+    idText.textContent = '#' + node.id;
+    g.appendChild(idText);
+
+    var typeText = document.createElementNS(SVGNS, 'text');
+    typeText.setAttribute('x', '10');
+    typeText.setAttribute('y', '38');
+    typeText.setAttribute('fill', color);
+    typeText.setAttribute('font-size', '13');
+    typeText.setAttribute('font-weight', 'bold');
+    var displayName = node.meta.title || node.classType;
+    typeText.textContent = displayName.length > 20 ? displayName.substring(0, 18) + '...' : displayName;
+    g.appendChild(typeText);
+
+    var inputCount = Object.keys(node.inputs).length;
+    var inputText = document.createElementNS(SVGNS, 'text');
+    inputText.setAttribute('x', '10');
+    inputText.setAttribute('y', '54');
+    inputText.setAttribute('fill', '#777');
+    inputText.setAttribute('font-size', '10');
+    inputText.textContent = '输入: ' + inputCount;
+    g.appendChild(inputText);
+
+    g.setAttribute('data-node-id', node.id);
+    g.addEventListener('click', function(e) {
+      e.stopPropagation();
+      document.querySelectorAll('.node-rect.selected').forEach(function(el) { el.classList.remove('selected'); });
+      g.classList.add('selected');
+      selectedNodeId = node.id;
+      renderNodeProperties(node);
+    });
+    svg.appendChild(g);
+  });
+
+  var wrapper = document.getElementById('svgWrapper');
+  wrapper.style.width = svgWidth + 'px';
+  wrapper.style.height = svgHeight + 'px';
+}
+
+function renderNodeProperties(node) {
+  var panel = document.getElementById('propertiesPanel');
+  var contentEl = document.getElementById('propertiesContent');
+  var placeholderEl = document.getElementById('propertiesPlaceholder');
+  var displayName = node.meta.title || node.classType;
+  var isSkipped = workflow[node.id]._skip === true;
+
+  // 隐藏占位提示，显示内容区
+  if (placeholderEl) placeholderEl.style.display = 'none';
+  if (contentEl) contentEl.style.display = 'block';
+
+  var html = '<div class="properties-header">' +
+    '<h4>' + escapeHtml(displayName) + '</h4>' +
+    '<span class="node-id">#' + node.id + ' · ' + escapeHtml(node.classType) + '</span>' +
+    '</div>';
+
+  html += '<div class="skip-section"><label class="skip-label">' +
+    '<input type="checkbox" id="skipCheckbox" ' + (isSkipped ? 'checked' : '') + ' onchange="onSkipChange(\'' + node.id + '\', this.checked)"> ' +
+    '跳过此节点</label></div>';
+
+  for (var inputName in node.inputs) {
+    if (!node.inputs.hasOwnProperty(inputName)) continue;
+    var currentValue = node.inputs[inputName];
+    var isConnection = Array.isArray(currentValue) && currentValue.length === 2 && typeof currentValue[0] === "string";
+
+    html += '<div class="node-property-group"><label>' + escapeHtml(inputName);
+    if (isConnection) html += ' <span class="connection-badge">连接</span>';
+    html += '</label>';
+
+    if (isConnection) {
+      html += '<div class="connection-display">&larr; 节点 #' + currentValue[0] + ' 输出 ' + currentValue[1] + '</div>';
+    } else {
+      html += '<div class="input-row" id="input-row-' + escapeHtml(inputName) + '">';
+      html += createInputControl(node.id, inputName, currentValue);
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // 只写入内容区，保留拖拽手柄；并重置滚动到顶部
+  contentEl.innerHTML = html;
+  contentEl.scrollTop = 0;
+}
+
+function createInputControl(nodeId, inputName, currentValue) {
+  var isPlaceholder = typeof currentValue === 'string' && currentValue.startsWith('%') && currentValue.endsWith('%');
+  var controlHtml = '';
+
+  if (isPlaceholder || typeof currentValue === 'string') {
+    var isLong = typeof currentValue === 'string' && (currentValue.length > 50 || currentValue.indexOf('\n') >= 0);
+    if (isLong || isPlaceholder) {
+      controlHtml += '<textarea onchange="onInputChange(\'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this.value)">' + escapeHtml(String(currentValue)) + '</textarea>';
+    } else {
+      controlHtml += '<input type="text" value="' + escapeAttr(String(currentValue)) + '" onchange="onInputChange(\'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this.value)">';
+    }
+  } else if (typeof currentValue === 'number') {
+    var step = Number.isInteger(currentValue) ? '1' : '0.01';
+    controlHtml += '<input type="number" step="' + step + '" value="' + currentValue + '" onchange="onInputChange(\'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this.value)">';
+  } else if (typeof currentValue === 'boolean') {
+    controlHtml += '<input type="checkbox" ' + (currentValue ? 'checked' : '') + ' onchange="onInputChange(\'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this.checked)">';
+  } else {
+    controlHtml += '<input type="text" value="' + escapeAttr(String(currentValue || '')) + '" onchange="onInputChange(\'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this.value)">';
+  }
+
+  controlHtml += '<button class="placeholder-btn" onclick="showPlaceholderMenu(event, \'' + nodeId + '\', \'' + escapeAttr(inputName) + '\', this)">占位符</button>';
+  return controlHtml;
+}
+
+function showPlaceholderMenu(event, nodeId, inputName, btn) {
+  event.stopPropagation();
+  var existing = document.querySelector('.placeholder-menu');
+  if (existing) existing.remove();
+
+  var recommended = getRecommendedPlaceholder(inputName);
+  var menu = document.createElement('div');
+  menu.className = 'placeholder-menu';
+  menu.style.display = 'none';
+
+  // 构造头部
+  var header = document.createElement('div');
+  header.className = 'placeholder-menu-header';
+  header.innerHTML = '<div class="drag-handle"></div><div style="flex:1;text-align:center;color:#888;font-size:12px;">占位符</div><button class="close-btn" onclick="closePlaceholderMenu()">✕</button>';
+  menu.appendChild(header);
+
+  // 构造列表容器
+  var itemsContainer = document.createElement('div');
+  itemsContainer.className = 'placeholder-menu-items';
+  
+  PLACEHOLDER_MAP.forEach(function(item) {
+    var menuItem = document.createElement('div');
+    menuItem.className = 'placeholder-menu-item';
+    if (item.placeholder === recommended) menuItem.classList.add('recommended');
+    menuItem.innerHTML = '<span class="placeholder-code">' + item.placeholder + '</span><span class="placeholder-label">' + item.label + '</span>';
+    menuItem.addEventListener('click', function() {
+      setPlaceholderValue(nodeId, inputName, item.placeholder);
+      closePlaceholderMenu();
+    });
+    itemsContainer.appendChild(menuItem);
+  });
+
+  var clearItem = document.createElement('div');
+  clearItem.className = 'placeholder-menu-item clear';
+  clearItem.innerHTML = '<span class="placeholder-code">清除占位符</span><span class="placeholder-label">恢复为默认值</span>';
+  clearItem.addEventListener('click', function() {
+    clearPlaceholderValue(nodeId, inputName);
+    closePlaceholderMenu();
+  });
+  itemsContainer.appendChild(clearItem);
+
+  menu.appendChild(itemsContainer);
+  document.body.appendChild(menu);
+
+  // 显示动画
+  setTimeout(function() { menu.style.display = 'flex'; }, 10);
+
+  // 拖拽调整高度
+  var startY, startHeight;
+  header.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      startY = e.touches[0].clientY;
+      var rect = menu.getBoundingClientRect();
+      startHeight = rect.height;
+    }
+  }, { passive: false });
+
+  header.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && startY !== null) {
+      e.preventDefault();
+      var delta = startY - e.touches[0].clientY;
+      var newHeight = Math.max(200, Math.min(window.innerHeight * 0.9, startHeight + delta));
+      menu.style.maxHeight = newHeight + 'px';
+    }
+  }, { passive: false });
+
+  header.addEventListener('touchend', function() {
+    startY = null;
+  });
+
+  // 鼠标拖拽（桌面调试用）
+  header.addEventListener('mousedown', function(e) {
+    startY = e.clientY;
+    var rect = menu.getBoundingClientRect();
+    startHeight = rect.height;
+    header.style.cursor = 'row-resize';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function doDrag(e) {
+    if (startY === null) return;
+    var delta = startY - e.clientY;
+    var newHeight = Math.max(200, Math.min(window.innerHeight * 0.9, startHeight + delta));
+    menu.style.maxHeight = newHeight + 'px';
+  });
+  document.addEventListener('mouseup', function stopDrag() {
+    document.removeEventListener('mousemove', doDrag);
+    if (header) header.style.cursor = 'grab';
+    startY = null;
+  });
+}
+
+function closePlaceholderMenu() {
+  var existing = document.querySelector('.placeholder-menu');
+  if (existing) existing.remove();
+}
+
+function getRecommendedPlaceholder(inputName) {
+  var lowerName = inputName.toLowerCase();
+  for (var i = 0; i < PLACEHOLDER_MAP.length; i++) {
+    var item = PLACEHOLDER_MAP[i];
+    for (var j = 0; j < item.matchKeys.length; j++) {
+      var key = item.matchKeys[j];
+      if (lowerName === key.toLowerCase() || lowerName.indexOf(key.toLowerCase()) >= 0) {
+        return item.placeholder;
+      }
+    }
+  }
+  return null;
+}
+
+function setPlaceholderValue(nodeId, inputName, placeholder) {
+  workflow[nodeId].inputs[inputName] = placeholder;
+  nodeMap[nodeId].inputs[inputName] = placeholder;
+  hasModifications = true;
+  renderNodeProperties(nodeMap[nodeId]);
+}
+
+function clearPlaceholderValue(nodeId, inputName) {
+  var node = nodeMap[nodeId];
+  var currentValue = node.inputs[inputName];
+  if (typeof currentValue === 'string' && currentValue.startsWith('%') && currentValue.endsWith('%')) {
+    workflow[nodeId].inputs[inputName] = "";
+    node.inputs[inputName] = "";
+  }
+  hasModifications = true;
+  renderNodeProperties(node);
+}
+
+function onInputChange(nodeId, inputName, newValue) {
+  var node = nodeMap[nodeId];
+  var current = node.inputs[inputName];
+  if (typeof current === 'number') {
+    if (Number.isInteger(current)) newValue = parseInt(newValue, 10);
+    else newValue = parseFloat(newValue);
+  } else if (typeof current === 'boolean') {
+    newValue = newValue === true || newValue === 'true';
+  }
+  workflow[nodeId].inputs[inputName] = newValue;
+  node.inputs[inputName] = newValue;
+  hasModifications = true;
+}
+
+function onSkipChange(nodeId, checked) {
+  workflow[nodeId]._skip = checked;
+  hasModifications = true;
+  var nodeEl = document.querySelector('[data-node-id="' + nodeId + '"]');
+  if (nodeEl) {
+    if (checked) nodeEl.classList.add('skipped');
+    else nodeEl.classList.remove('skipped');
+    var rect = nodeEl.querySelector('rect');
+    if (rect) {
+      rect.setAttribute('fill', checked ? '#1a1a2e' : '#2a2a3e');
+      if (checked) rect.setAttribute('stroke-dasharray', '5,5');
+      else rect.setAttribute('stroke-dasharray', 'none');
+    }
+  }
+}
+
+function zoom(delta) {
+  scale = Math.max(0.3, Math.min(3, scale + delta));
+  updateScale();
+}
+function zoomReset() {
+  scale = 1;
+  updateScale();
+  var wrapper = document.getElementById('canvasWrapper');
+  wrapper.scrollTop = 0;
+  wrapper.scrollLeft = 0;
+}
+function updateScale() {
+  var wrapper = document.getElementById('svgWrapper');
+  wrapper.style.transform = 'scale(' + scale + ')';
+}
+
+function saveWorkflow() {
+  var jsonStr = JSON.stringify(workflow, null, 2);
+  AndroidInterface.onSave(jsonStr);
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escapeAttr(str) {
+  return String(str).replace(/'/g,"\\'");
+}
+
+// touch drag scroll
+(function() {
+  var wrapper = document.getElementById('canvasWrapper');
+  var touchStartX = 0, touchStartY = 0, scrollStartX = 0, scrollStartY = 0;
+  wrapper.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      var t = e.touches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+      scrollStartX = wrapper.scrollLeft;
+      scrollStartY = wrapper.scrollTop;
+    }
+  }, { passive: true });
+  wrapper.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1) {
+      var t = e.touches[0];
+      wrapper.scrollLeft = scrollStartX - (t.clientX - touchStartX);
+      wrapper.scrollTop = scrollStartY - (t.clientY - touchStartY);
+    }
+  }, { passive: true });
+})();
+// ===== 属性面板拖拽调整高度 =====
+(function() {
+  var handle = document.getElementById('propertiesDragHandle');
+  var panel = document.getElementById('propertiesPanel');
+  var startY, startHeight;
+
+  handle.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      startY = e.touches[0].clientY;
+      startHeight = panel.offsetHeight;
+      panel.style.transition = 'none';
+    }
+  }, { passive: false });
+
+  handle.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && startY !== null) {
+      e.preventDefault();
+      var delta = startY - e.touches[0].clientY; // 向上拖=变大
+      var newHeight = Math.max(120, Math.min(window.innerHeight * 0.85, startHeight + delta));
+      panel.style.height = newHeight + 'px';
+    }
+  }, { passive: false });
+
+  handle.addEventListener('touchend', function() {
+    startY = null;
+  });
+
+  // 鼠标拖拽（桌面调试用）
+  handle.addEventListener('mousedown', function(e) {
+    startY = e.clientY;
+    startHeight = panel.offsetHeight;
+    panel.style.transition = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function doDrag(e) {
+    if (startY === null) return;
+    var delta = startY - e.clientY;
+    var newHeight = Math.max(120, Math.min(window.innerHeight * 0.85, startHeight + delta));
+    panel.style.height = newHeight + 'px';
+  });
+  document.addEventListener('mouseup', function stopDrag() {
+    document.removeEventListener('mousemove', doDrag);
+    startY = null;
+  });
+})();
+</script>
+</body>
+</html>

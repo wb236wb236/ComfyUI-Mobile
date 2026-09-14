@@ -35,6 +35,7 @@ import com.example.demo.model.NodeConfig;
 import com.example.demo.model.ParsedWorkflow;
 import com.example.demo.model.ParameterNode;
 import com.example.demo.api.ApiRequestBuilder;
+import com.example.demo.placeholder.PlaceholderReplacer;
 import com.example.demo.view.AppHeader;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -884,39 +885,15 @@ public class MainActivity extends AppCompatActivity {
         // 构建请求体 - 使用动态 API 请求构建器
         JsonObject root = new JsonObject();
         JsonObject promptObj;
-    
+
+        // 检查当前激活配置是否启用了占位符替换模式
+        boolean usePlaceholderMode = false;
+        if (activeConfig != null) {
+            usePlaceholderMode = NodeManagerActivity.isPlaceholderMode(this, activeConfig.getId());
+        }
+
         if (workflowTemplate != null) {
-            // 使用动态构建器
-            promptObj = workflowTemplate.deepCopy();
-    
-            // 收集参数
-            Map<String, Object> params = new HashMap<>();
-    
-            // 添加提示词参数
-            params.put("8.text", positive);  // 正向提示词节点
-            params.put("3.text", negative);  // 负向提示词节点
-    
-            // 添加分辨率参数
-            try {
-                int width = Integer.parseInt(binding.etWidth.getText().toString());
-                int height = Integer.parseInt(binding.etHeight.getText().toString());
-                params.put("5.width", width);
-                params.put("5.height", height);
-            } catch (NumberFormatException e) {
-                // 使用默认值
-            }
-    
-            // 添加采样参数
-            try {
-                int steps = Integer.parseInt(binding.etSteps.getText().toString());
-                double cfg = Double.parseDouble(binding.etCFG.getText().toString());
-                params.put("10.steps", steps);
-                params.put("10.cfg", cfg);
-            } catch (NumberFormatException e) {
-                // 使用默认值
-            }
-    
-            // 添加种子参数
+            // 收集公共参数值
             long seed;
             if (binding.etSeed.getText().toString().isEmpty()) {
                 seed = (long) (Math.random() * 999999999999999L);
@@ -927,19 +904,40 @@ public class MainActivity extends AppCompatActivity {
                     seed = (long) (Math.random() * 999999999999999L);
                 }
             }
-            // 尝试更新所有可能的种子节点
-            params.put("9.seed", seed);
-            params.put("10.seed", seed);
-            params.put("13.seed", seed);
-    
-            // 使用 ApiRequestBuilder 更新参数
-            for (Map.Entry<String, Object> entry : params.entrySet()) {
-                String[] parts = entry.getKey().split("\\.");
-                if (parts.length == 2) {
-                    String nodeId = parts[0];
-                    String paramName = parts[1];
-                    requestBuilder.updateNodeParameter(promptObj, nodeId, paramName, entry.getValue());
+
+            int width = 0, height = 0, steps = 0;
+            double cfg = 0;
+            try {
+                width = Integer.parseInt(binding.etWidth.getText().toString());
+                height = Integer.parseInt(binding.etHeight.getText().toString());
+            } catch (NumberFormatException e) { }
+            try {
+                steps = Integer.parseInt(binding.etSteps.getText().toString());
+                cfg = Double.parseDouble(binding.etCFG.getText().toString());
+            } catch (NumberFormatException e) { }
+
+            if (usePlaceholderMode && PlaceholderReplacer.hasPlaceholders(workflowTemplate.toString())) {
+                // 占位符替换模式：用字符串替换处理工作流中的占位符
+                PlaceholderReplacer.Payload payload = new PlaceholderReplacer.Payload();
+                payload.prompt = positive;
+                payload.negativePrompt = negative;
+                payload.seed = seed;
+                payload.steps = steps;
+                payload.cfgScale = cfg;
+                payload.width = width;
+                payload.height = height;
+
+                String replacedJson = PlaceholderReplacer.replace(workflowTemplate.toString(), payload);
+                if (replacedJson != null) {
+                    promptObj = JsonParser.parseString(replacedJson).getAsJsonObject();
+                } else {
+                    promptObj = workflowTemplate.deepCopy();
+                    applyDefaultParams(requestBuilder, promptObj, positive, negative, seed, width, height, steps, cfg);
                 }
+            } else {
+                // 默认模式：使用原有的 nodeId.paramName 注入方式
+                promptObj = workflowTemplate.deepCopy();
+                applyDefaultParams(requestBuilder, promptObj, positive, negative, seed, width, height, steps, cfg);
             }
         } else {
             // 回退到手动构建 (以防万一)
@@ -951,7 +949,7 @@ public class MainActivity extends AppCompatActivity {
             node8.add("inputs", node8Inputs);
             promptObj.add("8", node8);
         }
-    
+
         root.add("prompt", promptObj);
         root.addProperty("client_id", "android_client");
 
@@ -984,13 +982,37 @@ public class MainActivity extends AppCompatActivity {
                         binding.btnGenerate.setText("正在排队中...");
                         Toast.makeText(MainActivity.this, "提交成功", Toast.LENGTH_SHORT).show();
                     });
-                    // 后续通过 WebSocket 监听执行状态，或轮询结果
                 } else {
                     final String errorBody = response.body() != null ? response.body().string() : "";
                     showError("服务器错误: " + response.code() + " " + errorBody);
                 }
             }
         });
+    }
+
+    /**
+     * 默认参数注入方式 — 使用 nodeId.paramName 定位并更新工作流参数
+     */
+    private void applyDefaultParams(ApiRequestBuilder builder, JsonObject promptObj,
+                                     String positive, String negative,
+                                     long seed, int width, int height, int steps, double cfg) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("8.text", positive);
+        params.put("3.text", negative);
+        if (width > 0) params.put("5.width", width);
+        if (height > 0) params.put("5.height", height);
+        if (steps > 0) params.put("10.steps", steps);
+        params.put("10.cfg", cfg);
+        params.put("9.seed", seed);
+        params.put("10.seed", seed);
+        params.put("13.seed", seed);
+
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            String[] parts = entry.getKey().split("\\.");
+            if (parts.length == 2) {
+                builder.updateNodeParameter(promptObj, parts[0], parts[1], entry.getValue());
+            }
+        }
     }
 
     private void showError(String msg) {

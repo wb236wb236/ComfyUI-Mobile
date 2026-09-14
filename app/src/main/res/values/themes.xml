@@ -7,4 +7,11 @@
     </style>
 
     <style name="Theme.Demo" parent="Base.Theme.Demo" />
+
+    <!-- 节点配置操作对话框：标题（工作流名字）蓝色，选项白色 -->
+    <style name="Theme.Demo.ConfigDialog" parent="Theme.Material3.DayNight.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/comfy_dialog_bg</item>
+        <item name="android:textColorPrimary">#4a90e2</item>
+        <item name="android:colorAccent">#4a90e2</item>
+    </style>
 </resources>

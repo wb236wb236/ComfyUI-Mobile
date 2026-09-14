@@ -4,16 +4,14 @@ plugins {
 
 android {
     namespace = "com.example.demo"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.example.demo"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 2
-        versionName = "0.0.6"
+        targetSdk = 37
+        versionCode = 3
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

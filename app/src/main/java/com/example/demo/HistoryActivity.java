@@ -30,7 +30,12 @@ import com.example.demo.manager.ImageLocalStore;
 import com.example.demo.view.AppHeader;
 import com.google.gson.JsonObject;
 import android.content.Intent;
+import android.net.Uri;
+import android.provider.MediaStore;
 
+import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -372,7 +377,7 @@ public class HistoryActivity extends AppCompatActivity {
             if (entry.localPath != null && !entry.localPath.isEmpty() && 
                 ImageLocalStore.getInstance(HistoryActivity.this).isImageExists(entry.localPath)) {
                 Glide.with(HistoryActivity.this)
-                        .load(new java.io.File(entry.localPath))
+                        .load(new File(entry.localPath))
                         .transform(new CenterCrop(), new RoundedCorners(30))
                         .dontAnimate()
                         .placeholder(new ColorDrawable(Color.parseColor("#1AFFFFFF")))
@@ -391,6 +396,20 @@ public class HistoryActivity extends AppCompatActivity {
                 holder.image.setBackgroundColor(Color.parseColor("#1AFFFFFF"));
             }
 
+            // 点击图片放大查看
+            holder.image.setOnClickListener(v -> showFullscreenImage(entry));
+
+            // 长按保存图片
+            holder.image.setOnLongClickListener(v -> {
+                new AlertDialog.Builder(HistoryActivity.this)
+                        .setTitle("保存图片")
+                        .setMessage("是否将此图片保存到相册？")
+                        .setPositiveButton("保存", (d, w) -> saveImageToGallery(entry))
+                        .setNegativeButton("取消", null)
+                        .show();
+                return true;
+            });
+
             holder.image.animate()
                     .alpha(1f)
                     .scaleX(1f)
@@ -405,6 +424,43 @@ public class HistoryActivity extends AppCompatActivity {
         @Override
         public int getItemCount() {
             return items.size();
+        }
+
+        private void showFullscreenImage(HistoryStore.HistoryEntry entry) {
+            PhotoViewDialogFragment.newInstance(entry).show(
+                    HistoryActivity.this.getSupportFragmentManager(), "fullscreen_image");
+        }
+
+        private void saveImageToGallery(HistoryStore.HistoryEntry entry) {
+            try {
+                File imageFile = null;
+                if (entry.localPath != null && !entry.localPath.isEmpty()) {
+                    imageFile = new File(entry.localPath);
+                }
+
+                if (imageFile != null && imageFile.exists()) {
+                    // 从本地保存
+                    android.content.ContentValues values = new android.content.ContentValues();
+                    values.put(MediaStore.Images.Media.DISPLAY_NAME, System.currentTimeMillis() + ".png");
+                    values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+                    Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                    try (InputStream is = new java.io.FileInputStream(imageFile);
+                         java.io.OutputStream os = getContentResolver().openOutputStream(uri)) {
+                        byte[] buffer = new byte[8192];
+                        int len;
+                        while ((len = is.read(buffer)) != -1) {
+                            os.write(buffer, 0, len);
+                        }
+                    }
+                    Toast.makeText(HistoryActivity.this, "已保存到相册", Toast.LENGTH_SHORT).show();
+                } else {
+                    // 从远程下载保存
+                    Toast.makeText(HistoryActivity.this, "图片本地不存在，仅可保存远程图片", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                Toast.makeText(HistoryActivity.this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
         }
 
         final class ImageHolder extends RecyclerView.ViewHolder {
