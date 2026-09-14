@@ -23,8 +23,6 @@ ComfyUI Mobile 是基于 ComfyUI 的移动端应用，解决了移动端使用�
 ## 界面概览
 主界面展示工作流概览与启动按钮，节点管理界面提供列表形式的节点配置编辑，设置界面支持主题切换与日志查看。
 ![主界面](assets/screenshot-main.png)
-![可视化工作流编辑器](assets/screenshot-node.png)
-
 
 ## 环境准备
 - **JDK 17+**
